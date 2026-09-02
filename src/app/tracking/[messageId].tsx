@@ -1,8 +1,9 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { FlightCanvas, type FlightEvent } from '@/components/flight-canvas';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
@@ -12,9 +13,12 @@ import { supabase } from '@/lib/supabase';
 
 type OtherParty = { handle: string | null; displayName: string | null };
 
-// Skia path rendering + animated plane arrive in build step 4; weather
-// events (wind/rain/thermal/etc.) in step 6. Progress here is derived
-// purely from the server-chosen departed_at/duration_ms on the message row.
+// Progress is derived purely from the server-chosen departed_at/duration_ms
+// on the message row (build step 3) -- the server is the timing authority,
+// so FlightCanvas's wind/rain/thermal/bird/tree zones are a client-side
+// visual layer only: they never alter the real progress-to-time mapping.
+// Persisting those events to flight_events / triggering push notifications
+// is step 6.
 export default function TrackingScreen() {
   const { messageId } = useLocalSearchParams<{ messageId: string }>();
   const { profile } = useAuth();
@@ -22,13 +26,21 @@ export default function TrackingScreen() {
   const [otherParty, setOtherParty] = useState<OtherParty | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [weatherEvents, setWeatherEvents] = useState<FlightEvent[]>([]);
   const landAttempted = useRef(false);
+
+  const onFlightEvent = useCallback((event: FlightEvent) => {
+    setWeatherEvents((events) => [...events, event]);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     fetchMessage(messageId).then(
       (data) => {
-        if (!cancelled) setMessage(data);
+        if (!cancelled) {
+          setMessage(data);
+          setWeatherEvents([]);
+        }
       },
       (err) => {
         if (!cancelled) setLoadError(err instanceof Error ? err.message : 'Could not load flight.');
@@ -63,10 +75,6 @@ export default function TrackingScreen() {
 
   const departedAtMs = message ? new Date(message.departed_at).getTime() : null;
   const durationMs = message?.duration_ms ?? null;
-  const progress =
-    departedAtMs !== null && durationMs !== null
-      ? Math.min(1, (now - departedAtMs) / durationMs)
-      : 0;
   const landed = message?.status === 'landed';
   const etaSeconds =
     departedAtMs !== null && durationMs !== null
@@ -92,12 +100,15 @@ export default function TrackingScreen() {
 
   const flightLog = useMemo(() => {
     if (!message || departedAtMs === null) return [];
-    const entries = [{ label: 'Departed', at: departedAtMs }];
+    const entries = [
+      { label: 'Departed', at: departedAtMs },
+      ...weatherEvents.map((event) => ({ label: event.label, at: event.at })),
+    ];
     if (message.landed_at) {
       entries.push({ label: 'Landed', at: new Date(message.landed_at).getTime() });
     }
-    return entries;
-  }, [message, departedAtMs]);
+    return entries.sort((a, b) => a.at - b.at);
+  }, [message, departedAtMs, weatherEvents]);
 
   if (loadError) {
     return (
@@ -135,12 +146,15 @@ export default function TrackingScreen() {
           </Pressable>
         </ThemedView>
 
-        <ThemedView type="backgroundElement" style={styles.flightPathStub}>
-          <ThemedText type="title">✈︎</ThemedText>
-          <ThemedText themeColor="textSecondary">
-            Skia flight path + animated plane arrives in build step 4.
-          </ThemedText>
-          <ThemedText type="subtitle">{Math.round(progress * 100)}%</ThemedText>
+        <ThemedView type="backgroundElement" style={styles.flightCanvasCard}>
+          {departedAtMs !== null && durationMs !== null ? (
+            <FlightCanvas
+              departedAtMs={departedAtMs}
+              durationMs={durationMs}
+              landed={landed}
+              onEvent={onFlightEvent}
+            />
+          ) : null}
         </ThemedView>
 
         <ThemedText type="default">{landed ? 'Landed' : `ETA ${etaSeconds}s`}</ThemedText>
@@ -173,13 +187,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: Spacing.two,
   },
-  flightPathStub: {
+  flightCanvasCard: {
     flex: 1,
     borderRadius: Spacing.three,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.two,
-    padding: Spacing.four,
+    overflow: 'hidden',
+    padding: Spacing.two,
   },
   log: {
     gap: Spacing.one,

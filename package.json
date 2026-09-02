@@ -7,6 +7,7 @@
     "@expo-google-fonts/special-elite": "^0.4.1",
     "@expo/ui": "~57.0.15",
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@shopify/react-native-skia": "2.6.2",
     "@supabase/supabase-js": "^2.112.4",
     "expo": "~57.0.19",
     "expo-constants": "~57.0.17",
@@ -45,7 +46,8 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "postinstall": "node ./scripts/copy-canvaskit-wasm.js"
   },
   "private": true
 }
