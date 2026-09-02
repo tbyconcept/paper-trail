@@ -1,27 +1,62 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Fonts, PaperColors, Spacing } from '@/constants/theme';
-import { getMockContact } from '@/lib/mock-contacts';
+import { SendLimitExceededError, sendMessage } from '@/lib/messages';
+import { supabase } from '@/lib/supabase';
 
 type ComposeMode = 'typed' | 'handwritten';
+type RecipientProfile = { handle: string | null; display_name: string | null };
 
 export default function ComposeScreen() {
   const { contactId } = useLocalSearchParams<{ contactId: string }>();
-  const contact = getMockContact(contactId);
+  const [recipient, setRecipient] = useState<RecipientProfile | null>(null);
   const [mode, setMode] = useState<ComposeMode>('typed');
   const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  function handleSend() {
-    // Stub: flight timing/duration/weather land in build steps 2-6.
-    // Server will own departedAt + durationMs once Supabase is wired up.
-    const messageId = `pending-${Date.now()}`;
-    router.replace({ pathname: '/tracking/[messageId]', params: { messageId, contactId } });
+  useEffect(() => {
+    let cancelled = false;
+    supabase
+      .from('profiles')
+      .select('handle, display_name')
+      .eq('id', contactId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled) setRecipient(data);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [contactId]);
+
+  async function handleSend() {
+    setError(null);
+    setSending(true);
+    try {
+      const message = await sendMessage({
+        recipientId: contactId,
+        contentType: mode,
+        contentText: mode === 'typed' ? text.trim() : undefined,
+      });
+      router.replace({ pathname: '/tracking/[messageId]', params: { messageId: message.id } });
+    } catch (err) {
+      if (err instanceof SendLimitExceededError) {
+        router.push('/paywall');
+        return;
+      }
+      setError(err instanceof Error ? err.message : 'Could not send — try again.');
+    } finally {
+      setSending(false);
+    }
   }
+
+  const displayName = recipient?.display_name ?? recipient?.handle ?? 'Unknown';
 
   return (
     <ThemedView style={styles.container}>
@@ -30,7 +65,7 @@ export default function ComposeScreen() {
           <Pressable onPress={() => router.back()} hitSlop={12}>
             <ThemedText type="link">Cancel</ThemedText>
           </Pressable>
-          <ThemedText type="smallBold">To {contact?.displayName ?? 'Unknown'}</ThemedText>
+          <ThemedText type="smallBold">To {displayName}</ThemedText>
           <ThemedView />
         </ThemedView>
 
@@ -60,15 +95,22 @@ export default function ComposeScreen() {
           </ThemedView>
         )}
 
+        {error ? (
+          <ThemedText type="small" themeColor="accent">
+            {error}
+          </ThemedText>
+        ) : null}
+
         <Pressable
           onPress={handleSend}
-          disabled={mode === 'typed' && text.trim().length === 0}
+          disabled={sending || (mode === 'typed' && text.trim().length === 0)}
           style={({ pressed }) => [
             styles.sendButton,
-            (pressed || (mode === 'typed' && text.trim().length === 0)) && styles.sendButtonDisabled,
+            (pressed || sending || (mode === 'typed' && text.trim().length === 0)) &&
+              styles.sendButtonDisabled,
           ]}>
           <ThemedText type="smallBold" themeColor="background">
-            Send
+            {sending ? 'Sending…' : 'Send'}
           </ThemedText>
         </Pressable>
       </SafeAreaView>

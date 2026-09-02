@@ -51,6 +51,10 @@ function RootLayoutNav() {
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="compose/[contactId]" options={{ headerShown: false }} />
           <Stack.Screen name="tracking/[messageId]" options={{ headerShown: false }} />
+          <Stack.Screen
+            name="contacts/add"
+            options={{ presentation: 'modal', title: 'Add contact' }}
+          />
           <Stack.Screen name="paywall" options={{ presentation: 'modal', title: 'Shop' }} />
         </Stack.Protected>
 
