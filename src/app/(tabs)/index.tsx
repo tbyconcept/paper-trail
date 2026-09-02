@@ -5,15 +5,28 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, Spacing, WebTopTabInset } from '@/constants/theme';
+import { useAuth } from '@/lib/auth-context';
 import { MOCK_CONTACTS, type MockContact } from '@/lib/mock-contacts';
 
 export default function ContactsScreen() {
+  const { profile, signOut } = useAuth();
+
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        <ThemedText type="title" style={styles.title}>
-          Contacts
-        </ThemedText>
+        <ThemedView style={styles.header}>
+          <ThemedView>
+            <ThemedText type="title">Contacts</ThemedText>
+            {profile?.display_name ? (
+              <ThemedText type="small" themeColor="textSecondary">
+                Signed in as {profile.display_name}
+              </ThemedText>
+            ) : null}
+          </ThemedView>
+          <Pressable onPress={() => signOut()} hitSlop={12}>
+            <ThemedText type="link">Sign out</ThemedText>
+          </Pressable>
+        </ThemedView>
         <FlatList
           data={MOCK_CONTACTS}
           keyExtractor={(item) => item.id}
@@ -48,7 +61,10 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: Spacing.four,
   },
-  title: {
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
     paddingTop: Spacing.three + WebTopTabInset,
     paddingBottom: Spacing.two,
   },
