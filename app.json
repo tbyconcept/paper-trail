@@ -8,7 +8,8 @@
     "scheme": "papertrail",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "com.tbyconcept.papertrail"
     },
     "android": {
       "adaptiveIcon": {
