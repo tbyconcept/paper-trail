@@ -22,13 +22,21 @@ import {
 
 import { PaperColors } from '@/constants/theme';
 
-export type FlightEventType = 'wind' | 'rain' | 'thermal' | 'bird' | 'tree';
+import {
+  BIRD_RANGE,
+  RAIN_RANGE,
+  THERMAL_RANGE,
+  TREE_RANGE,
+  WIND_RANGE,
+  ZONES,
+  type FlightEvent,
+  type FlightEventType,
+} from './flight-zones';
 
-export type FlightEvent = {
-  type: FlightEventType;
-  label: string;
-  at: number;
-};
+// Re-exported for existing consumers (flight-canvas.tsx/.web.tsx,
+// Tracking) -- the zone data/types themselves now live in flight-zones.ts,
+// shared with Tracking's flight-log backfill for an already-landed message.
+export type { FlightEvent, FlightEventType };
 
 export type FlightCanvasProps = {
   departedAtMs: number;
@@ -36,24 +44,6 @@ export type FlightCanvasProps = {
   landed: boolean;
   onEvent?: (event: FlightEvent) => void;
 };
-
-// Progress-range zones a flight passes through, in departure order. Purely
-// client-side/visual — the server never sees these, since it alone owns
-// departed_at/duration_ms (see 20260901140000_send_flow.sql's header note).
-// A zone fires its log entry once, the first frame progress enters its range.
-const TREE_RANGE: [number, number] = [0.06, 0.13];
-const BIRD_RANGE: [number, number] = [0.2, 0.27];
-const WIND_RANGE: [number, number] = [0.34, 0.5];
-const RAIN_RANGE: [number, number] = [0.6, 0.8];
-const THERMAL_RANGE: [number, number] = [0.86, 0.95];
-
-const ZONES: { type: FlightEventType; range: [number, number]; label: string }[] = [
-  { type: 'tree', range: TREE_RANGE, label: 'Grazed a tree line on the way up' },
-  { type: 'bird', range: BIRD_RANGE, label: 'Startled a flock of birds' },
-  { type: 'wind', range: WIND_RANGE, label: 'Caught in a crosswind, correcting course' },
-  { type: 'rain', range: RAIN_RANGE, label: 'Flying through rain — ink is starting to smear' },
-  { type: 'thermal', range: THERMAL_RANGE, label: 'Caught a warm updraft, picking up speed' },
-];
 
 const PLANE_SIZE = 15;
 
@@ -266,6 +256,38 @@ export default function FlightCanvasImpl({
   useEffect(() => {
     frameCallback.setActive(geometry !== null && !landed);
   }, [frameCallback, geometry, landed]);
+
+  // Whenever landed, snap the visual state to its fully-flown end position.
+  // Covers two cases uniformly: transitioning live (the frame loop above
+  // has already animated to ~t=1 by the time `landed` flips, so this is a
+  // no-op correction) and mounting already-landed -- e.g. reopened from
+  // Inbox, where the loop above never runs even once since setActive()
+  // above keeps it inactive from the start. Without this, the canvas would
+  // render the plane frozen at its initial (0,0)/t=0 state instead of the
+  // completed route.
+  //
+  // react-hooks/immutability (the reactCompiler experiment's linter) flags
+  // any `.value =` write to a useSharedValue result it didn't itself
+  // originate inside a hook it specifically recognizes (useFrameCallback's
+  // own callback, for frameWorklet above, is allowlisted; a plain effect
+  // or useAnimatedReaction reaching the same shared values is not) --
+  // false positive for Reanimated's actual, intended mutation pattern, not
+  // a real bug. Same category of friction this file already works around
+  // for react-hooks/exhaustive-deps on frameWorklet's own closing line.
+  useEffect(() => {
+    if (!landed || !geometry) return;
+    const [pos, tan] = geometry.contour.getPosTan(geometry.length);
+    /* eslint-disable react-hooks/immutability */
+    progress.value = 1;
+    planeX.value = pos.x;
+    planeY.value = pos.y;
+    planeAngle.value = (Math.atan2(tan.y, tan.x) * 180) / Math.PI;
+    thermalScale.value = 1;
+    smear.value = 1;
+    birdAmount.value = 0;
+    /* eslint-enable react-hooks/immutability */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [landed, geometry]);
 
   const planeTransform = useDerivedValue(() => [
     { translateX: planeX.value },
