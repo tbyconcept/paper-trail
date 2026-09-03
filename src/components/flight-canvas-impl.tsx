@@ -5,11 +5,12 @@ import {
   Group,
   Path,
   Skia,
+  useCanvasSize,
   type SkContourMeasure,
   type SkPath,
 } from '@shopify/react-native-skia';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { type LayoutChangeEvent, StyleSheet } from 'react-native';
+import { useCallback, useEffect, useMemo } from 'react';
+import { StyleSheet } from 'react-native';
 import {
   type DerivedValue,
   type FrameInfo,
@@ -147,11 +148,11 @@ export default function FlightCanvasImpl({
   landed,
   onEvent,
 }: FlightCanvasProps) {
-  const [size, setSize] = useState({ width: 0, height: 0 });
-  const onLayout = useCallback((e: LayoutChangeEvent) => {
-    const { width, height } = e.nativeEvent.layout;
-    setSize((prev) => (prev.width === width && prev.height === height ? prev : { width, height }));
-  }, []);
+  // Canvas's onLayout isn't supported on Fabric (see Canvas.tsx's own
+  // deprecation warning) -- useCanvasSize() is Skia's replacement, backed
+  // by an imperative .measure() call on the underlying native view rather
+  // than a layout event.
+  const { ref: canvasRef, size } = useCanvasSize();
 
   const geometry = useMemo(() => buildGeometry(size.width, size.height), [size.width, size.height]);
 
@@ -298,7 +299,7 @@ export default function FlightCanvasImpl({
   );
 
   return (
-    <Canvas style={styles.canvas} onLayout={onLayout}>
+    <Canvas ref={canvasRef} style={styles.canvas}>
       {geometry ? (
         <Group>
           {/* Dotted guide for the full route */}
