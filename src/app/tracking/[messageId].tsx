@@ -4,6 +4,7 @@ import { Pressable, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { FlightCanvas, type FlightEvent } from '@/components/flight-canvas';
+import { MessageContent } from '@/components/message-content';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
@@ -147,7 +148,11 @@ export default function TrackingScreen() {
         </ThemedView>
 
         <ThemedView type="backgroundElement" style={styles.flightCanvasCard}>
-          {departedAtMs !== null && durationMs !== null ? (
+          {landed ? (
+            // Once landed, this slot becomes the "open the letter" view
+            // instead of the (now static) flight animation.
+            <MessageContent message={message} />
+          ) : departedAtMs !== null && durationMs !== null ? (
             <FlightCanvas
               departedAtMs={departedAtMs}
               durationMs={durationMs}

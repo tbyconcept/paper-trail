@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { HandwritingCanvas, type StrokeDocument } from '@/components/handwriting-canvas';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Fonts, PaperColors, Spacing } from '@/constants/theme';
@@ -17,6 +18,7 @@ export default function ComposeScreen() {
   const [recipient, setRecipient] = useState<RecipientProfile | null>(null);
   const [mode, setMode] = useState<ComposeMode>('typed');
   const [text, setText] = useState('');
+  const [strokes, setStrokes] = useState<StrokeDocument | null>(null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -43,6 +45,8 @@ export default function ComposeScreen() {
         recipientId: contactId,
         contentType: mode,
         contentText: mode === 'typed' ? text.trim() : undefined,
+        contentStrokes: mode === 'handwritten' ? (strokes ?? undefined) : undefined,
+        penColor: mode === 'handwritten' ? PaperColors.ink : undefined,
       });
       router.replace({ pathname: '/tracking/[messageId]', params: { messageId: message.id } });
     } catch (err) {
@@ -57,6 +61,7 @@ export default function ComposeScreen() {
   }
 
   const displayName = recipient?.display_name ?? recipient?.handle ?? 'Unknown';
+  const isEmpty = mode === 'typed' ? text.trim().length === 0 : strokes === null;
 
   return (
     <ThemedView style={styles.container}>
@@ -88,11 +93,7 @@ export default function ComposeScreen() {
             onChangeText={setText}
           />
         ) : (
-          <ThemedView type="backgroundElement" style={styles.handwriteStub}>
-            <ThemedText themeColor="textSecondary" style={styles.centerText}>
-              Handwriting canvas (Skia stroke capture) arrives in build step 5.
-            </ThemedText>
-          </ThemedView>
+          <HandwritingCanvas onChangeStrokes={setStrokes} />
         )}
 
         {error ? (
@@ -103,11 +104,10 @@ export default function ComposeScreen() {
 
         <Pressable
           onPress={handleSend}
-          disabled={sending || (mode === 'typed' && text.trim().length === 0)}
+          disabled={sending || isEmpty}
           style={({ pressed }) => [
             styles.sendButton,
-            (pressed || sending || (mode === 'typed' && text.trim().length === 0)) &&
-              styles.sendButtonDisabled,
+            (pressed || sending || isEmpty) && styles.sendButtonDisabled,
           ]}>
           <ThemedText type="smallBold" themeColor="background">
             {sending ? 'Sending…' : 'Send'}
@@ -172,16 +172,6 @@ const styles = StyleSheet.create({
     lineHeight: 26,
     textAlignVertical: 'top',
     paddingTop: Spacing.two,
-  },
-  handwriteStub: {
-    flex: 1,
-    borderRadius: Spacing.three,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: Spacing.four,
-  },
-  centerText: {
-    textAlign: 'center',
   },
   sendButton: {
     backgroundColor: PaperColors.postalRed,
